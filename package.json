@@ -1,0 +1,17 @@
+{
+  "name": "puppeteer-coverage-to-istanbul",
+  "version": "1.0.0",
+  "description": "Uses Puppeteer coverage files and to create an html report",
+  "main": "combine",
+  "author": "David Villarama",
+  "license": "MIT",
+  "dependencies": {
+    "fs-extra": "^7.0.1",
+    "glob": "^7.1.3",
+    "istanbul": "^0.4.5",
+    "minimist": "^1.2.0",
+    "moment": "^2.24.0",
+    "promise-parallel-throttle": "^3.3.0",
+    "puppeteer-to-istanbul": "https://github.com/Science37/puppeteer-to-istanbul"
+  }
+}

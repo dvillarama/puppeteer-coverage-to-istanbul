@@ -1,0 +1,118 @@
+#!/usr/bin/env node
+
+const glob = require('glob');
+const istanbul = require('istanbul');
+const pti = require('puppeteer-to-istanbul');
+const fs = require('fs-extra');
+const moment = require('moment');
+const path = require('path');
+const throttle = require('promise-parallel-throttle');
+const options = require('minimist')(process.argv.slice(2));
+const script = path.basename(__filename);
+
+const inputDir = options.i;
+const outputDir = options.o;
+
+function usage() {
+  console.log(`Usage: ${script} 
+    -i <input directory of puppeteer coverage files> 
+    -o <output directory for converted files>`);
+}
+
+if (!inputDir || !outputDir) {
+  usage();
+  process.exit(-1);
+}
+
+/**
+ * Combine all coverage files and create an html report
+ */
+async function combine() {
+  console.log('Combining files to create report');
+  glob(`${outputDir}/*_coverage.json`, {}, async (er, files) => {
+    const collector = new istanbul.Collector();
+    let doneCount = 0;
+    let total = files.length;
+
+    files.forEach(f => {
+      console.log(`adding ${f} - ${++doneCount}/${total}`);
+      collector.add(JSON.parse(fs.readFileSync(f, 'utf8')));
+    });
+
+    const report = istanbul.Report.create('html', { });
+    const reportFile = await new Promise((resolve, reject) => {
+      report.on('error', reject);
+      try {
+      report.writeReport(collector);
+      } catch(err) {
+        console.error(err);
+      }
+    });
+  });
+}
+
+/**
+ * Filter method for puppeteer-to-istanbul - you probably would like to ignore
+ * libraries from vendors
+ *
+ * Return true to ignore url.
+ */
+const filter = (url) => {
+  // console.log({url});
+  if (url.includes('vendor-url')) {
+    // ignore files from the vendor
+    return true;
+  } 
+  return false;
+}
+
+/**
+ * Transform raw js puppeteer coverage to istanble compatible format
+ * @params {string} input - path to puppeteer coverage file
+ */
+async function transformFile(input) {
+  console.log(`Processing: ${input}`);
+  const basename = path.basename(input, '_raw.json');
+  const output = path.resolve(process.cwd(), outputDir, `${basename}_coverage.json`);
+
+  if (!fs.existsSync(output)) {
+    const coverage = JSON.parse(fs.readFileSync(input));
+    await pti.write(coverage, output, filter);
+    console.log(` --> finished: ${output}`);
+  } else {
+    console.log(` --> already exist`);
+  }
+}
+
+/**
+ * Transform all raw puppeteer files in output directory
+ */
+async function transformAll() {
+  return new Promise((resolve, reject) => {
+    try {
+      glob(`${inputDir}/*_raw.json`, {}, async (er, files) => {
+        const promises = files.map(f => {
+          return () => transformFile(f);
+        });
+
+        console.log('Converting files...');
+        await throttle.all(promises, { maxInProgress: 20 });
+        console.log('Done...');
+        resolve();
+      });
+    }catch(error) {
+      reject(error);
+    }
+  });
+}
+
+async function start() {
+  try {
+    await transformAll();
+    await combine();
+  } catch(err) {
+    console.error(`Error: ${err}`);
+  }
+}
+
+start();
